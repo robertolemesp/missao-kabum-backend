@@ -1,0 +1,15 @@
+<?php
+namespace Infrastructure\Database\Config;
+
+use Dotenv\Dotenv;
+
+class DatabaseConfig {
+  public static function getCredentials(): array {
+    return [
+      'host' => $_ENV['DB_HOST'] ?: 'localhost',
+      'dbname' => $_ENV['DB_NAME'] ?: 'robertos_mission',
+      'user' => $_ENV['DB_USER'] ?: 'root',
+      'password' => $_ENV['DB_PASSWORD'] ?: 'root'
+    ];
+  }
+}
