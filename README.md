@@ -32,6 +32,9 @@
   ```bash
   composer --version
   ```
+- **Windows:**
+  https://getcomposer.org/download/
+  
 
 # MySQL
 Ensure MySQL is installed and running:
@@ -129,11 +132,16 @@ Ensure MySQL is installed and running:
 
 ## End-to-End (e2e) Tests
   - **Location:** `src/Infrastructure/Api/_test/ApiE2eTest.php`
-  - **Purpose:** Validates full API interaction, including request handling and database operations.
-  - **Dependencies:** Requires API to be running.
-  - **Run Command:**
+  - **Purpose:** Validates full system interactions.
+  - **Dependencies:** 
+   - Requires API to be running.
+   - Requires to change `APP_ENV` to `test` in `.env`. Reason: API has a dbconfig routine that ran before e2e test.
+  - **Run Commands (each in a separated terminal):**
     ```sh
-    php -S localhost:8000 -t src/Infrastructure/Api &
+    php -S localhost:8000 -t src/Infrastructure/Api
+    ```
+
+    ```sh
     php vendor/bin/phpunit --filter ApiE2eTest
     ```
 
@@ -225,4 +233,4 @@ Ensure MySQL is installed and running:
 
 
 ### Logs
-  This application has logging enabled. Feel free to check it out at your SO temp dir: `missao-roberto-backend.log`
+  This application has logging enabled. Feel free to check it out at: `/storage/missao-roberto-api.log`

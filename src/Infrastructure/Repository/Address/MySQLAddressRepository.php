@@ -12,20 +12,10 @@ class MySQLAddressRepository implements AddressRepositoryInterface {
     $this->pdo = $pdo;
   }
 
-  public function create(Address $address): void {
-    $stmt = $this->pdo->prepare("INSERT INTO customer_address (customer_id, street, number, zipcode) VALUES (:customer_id, :street, :number, :zipcode)");
-    $stmt->execute([
-      'customer_id' => $address->getCustomerId(),
-      'street' => $address->getStreet(),
-      'number' => $address->getNumber(),
-      'zipcode' => $address->getZipcode(),
-    ]);
-  }
-
-  public function createMany(int $customerId, array $addresses): void {
+  public function createMany(int $customerId, array $addresses): ?array { 
     if (empty($addresses)) 
-      return;
-
+      return null;
+  
     $placeholders = [];
     $values = [];
   
@@ -33,20 +23,40 @@ class MySQLAddressRepository implements AddressRepositoryInterface {
       if (!$address instanceof Address) 
         throw new \InvalidArgumentException("All elements in the array must be instances of Address.");
       
-      $placeholders[] = '(?, ?, ?, ?)';
+      $placeholders[] = '(?, ?, ?, ?, ?, ?)';
       $values[] = $customerId;
       $values[] = $address->getStreet();
       $values[] = $address->getNumber();
       $values[] = $address->getZipcode();
+      $values[] = $address->getCity();
+      $values[] = $address->getState();
     }
-
-    $sql = "INSERT INTO customer_address (customer_id, street, number, zipcode) VALUES " . implode(', ', $placeholders);
+  
+    $sql = "INSERT INTO customer_address (customer_id, street, number, zipcode, city, state) VALUES " . implode(', ', $placeholders);
     
     $stmt = $this->pdo->prepare($sql);
-    $stmt->execute($values);
+    $result = $stmt->execute($values);
+  
+    if (!$result) 
+      return null;
+  
+    $lastInsertId = (int) $this->pdo->lastInsertId();
+    $createdAddresses = [];
+  
+    for ($i = 0; $i < count($addresses); $i++) 
+      $createdAddresses[] = new Address(
+        $lastInsertId + $i,
+        $customerId,
+        $addresses[$i]->getStreet(),
+        $addresses[$i]->getNumber(),
+        $addresses[$i]->getZipcode(),
+        $addresses[$i]->getCity(),
+        $addresses[$i]->getState()
+      );
+    
+    return $createdAddresses;
   }
-
-
+  
   public function findById(int $id): ?Address {
     $stmt = $this->pdo->prepare("SELECT * FROM customer_address WHERE id = ?");
     $stmt->execute([$id]);
@@ -61,7 +71,9 @@ class MySQLAddressRepository implements AddressRepositoryInterface {
       $row['customer_id'],
       $row['street'],
       $row['number'],
-      $row['zipcode']
+      $row['zipcode'],
+      $row['city'],
+      $row['state']
     );
   }
 
@@ -77,14 +89,16 @@ class MySQLAddressRepository implements AddressRepositoryInterface {
         $row['customer_id'],
         $row['street'],
         $row['number'],
-        $row['zipcode']
+        $row['zipcode'],
+        $row['city'],
+        $row['state']
       );
     }
     return $addresses;
   }
 
   public function updateMany(array $addresses): void {
-    $stmt = $this->pdo->prepare("UPDATE customer_address SET street = :street, number = :number, zipcode = :zipcode WHERE id = :id");
+    $stmt = $this->pdo->prepare("UPDATE customer_address SET street = :street, number = :number, zipcode = :zipcode, city = :city, state = :state WHERE id = :id");
   
     foreach ($addresses as $address) {
       if ($address instanceof Address) {
@@ -93,6 +107,8 @@ class MySQLAddressRepository implements AddressRepositoryInterface {
           'street' => $address->getStreet(),
           'number' => $address->getNumber(),
           'zipcode' => $address->getZipcode(),
+          'city' => $address->getCity(),
+          'state' => $address->getState()
         ]);
       }
     }

@@ -2,128 +2,164 @@
 namespace Application\Customer;
 
 use Domain\Customer\Customer;
-use Domain\Customer\CustomerServiceInterface;
 use Domain\Customer\CustomerRepositoryInterface;
-
 use Domain\Address\Address;
 use Application\Address\AddressService;
+use Exception;
 
 class CustomerService implements CustomerServiceInterface {
-  private $customerRepository;
-  private $addressService;
+  public function __construct(
+    private CustomerRepositoryInterface $customerRepository,
+    private AddressService $addressService
+  ) {}
 
-  public function __construct(CustomerRepositoryInterface $customerRepository, AddressService $addressService) {
-    $this->customerRepository = $customerRepository;
-    $this->addressService = $addressService;
-  }
+  public function create($creatingCustomer): ?array {
+    try {
+      $password = isset($creatingCustomer['password']) && is_string($creatingCustomer['password']) && !empty($creatingCustomer['password'])
+        ? password_hash($creatingCustomer['password'], PASSWORD_BCRYPT)
+        : null;
 
-  public function create($creatingCustomer): void {
-    $customer = new Customer(
-      null,
-      $creatingCustomer['name'],
-      $creatingCustomer['email'],
-      $creatingCustomer['password'],
-      new \DateTime($creatingCustomer['birthday']),
-      $creatingCustomer['cpf'],
-      $creatingCustomer['rg'],
-      $creatingCustomer['phone']
-    );
-  
-    $customerId = $this->customerRepository->create($customer);
-    $customer->setId($customerId);
-  
-    if (!isset($creatingCustomer['addresses']) || empty($creatingCustomer['addresses'])) 
-      return;
-  
-    $addresses = array_map(function ($addressData) use ($customer) {
-      return new Address(
+      $customer = new Customer(
         null,
-        $customer->getId(),
-        $addressData['street'],
-        $addressData['number'],
-        $addressData['zipcode']
+        $creatingCustomer['name'],
+        $creatingCustomer['email'],
+        $password,
+        new \DateTime($creatingCustomer['birthday']),
+        $creatingCustomer['cpf'],
+        $creatingCustomer['rg'],
+        $creatingCustomer['phone']
       );
-    }, $creatingCustomer['addresses']);
-  
-    $this->addressService->createMany($customer->getId(), $addresses);
-  }
-  
 
-  public function update(array $updatingCustomer): void {
-    $foundCustomer = $this->customerRepository->findById($updatingCustomer['id']);
-  
-    if (!$foundCustomer) 
-      throw new \InvalidArgumentException("Customer not found.");
-  
-    $customer = new Customer(
-      $foundCustomer->getId(),
-      $updatingCustomer['name'],
-      $foundCustomer->getEmail(),
-      $updatingCustomer['password'],
-      new \DateTime($updatingCustomer['birthday']),
-      $updatingCustomer['cpf'],
-      $updatingCustomer['rg'],
-      $updatingCustomer['phone']
-    );
-  
-    $this->customerRepository->update($customer);
-  
-    if (empty($updatingCustomer['addresses'])) 
-      return;
-  
-    $addresses = array_map(function ($addressData) use ($customer) {
-      if ($addressData instanceof Address) {
-        return new Address(
-          $addressData->getId(),
+      $customerId = $this->customerRepository->create($customer);
+
+      if (!$customerId) 
+        throw new \RuntimeException("Failed to create customer");
+
+      $customer->setId($customerId);
+
+      $addresses = [];
+      if (isset($creatingCustomer['addresses']) && !empty($creatingCustomer['addresses'])) {
+        $creatingAddresses = array_map(fn($creatingAddress) => new Address(
+          null,
           $customer->getId(),
-          $addressData->getStreet(),
-          $addressData->getNumber(),
-          $addressData->getZipcode()
-        );
+          $creatingAddress['street'],
+          $creatingAddress['number'],
+          $creatingAddress['zipcode'],
+          $creatingAddress['city'],
+          $creatingAddress['state']
+        ), $creatingCustomer['addresses']);
+
+        $addresses = $this->addressService->createMany($customer->getId(), $creatingAddresses);
       }
-  
-      return new Address(
-        $addressData['id'] ?? null, 
-        $customer->getId(),
-        $addressData['street'],
-        $addressData['number'],
-        $addressData['zipcode']
+
+      return [
+        'id' => $customer->getId(),
+        'name' => $customer->getName(),
+        'email' => $customer->getEmail(),
+        'birthday' => $customer->getBirthday(),
+        'cpf' => $customer->getCpf(),
+        'rg' => $customer->getRg(),
+        'phone' => $customer->getPhone(),
+        'addresses' => array_map(
+          fn(Address $address) => $this->addressService->mapAddressToArray($address),
+          $addresses ?? []
+        )
+      ];
+    } catch (Exception $e) {
+      throw new Exception("Error creating customer: " . $e->getMessage(), 0, $e);
+    }
+  }
+
+  public function update(array $data): void {
+    try {
+      $foundCustomer = $this->customerRepository->findById($data['id']);
+
+      if (!$foundCustomer) 
+        throw new \InvalidArgumentException("Customer not found.");
+
+      $customer = new Customer(
+        $foundCustomer->getId(),
+        $data['name'],
+        $foundCustomer->getEmail(),
+        $data['password'],
+        new \DateTime($data['birthday']),
+        $data['cpf'],
+        $data['rg'],
+        $data['phone']
       );
-    }, $updatingCustomer['addresses']);
-  
-    $this->addressService->updateMany($addresses);
+
+      $this->customerRepository->update($customer);
+
+      if (!empty($data['addresses'])) 
+        $this->addressService->updateMany(
+          $this->addressService->mapAddresses($customer->getId(), $data['addresses'])
+        );
+    } catch (Exception $e) {
+      throw new Exception("Error updating customer: " . $e->getMessage(), 0, $e);
+    }
   }
 
-  public function remove($id): void {
-    $this->addressService->removeAllByCustomerId($id);
-    
-    $this->customerRepository->remove($id);
+  public function remove(int $id): void {
+    try {
+      $this->addressService->removeAllByCustomerId($id);
+      $this->customerRepository->remove($id);
+    } catch (Exception $e) {
+      throw new Exception("Error removing customer: " . $e->getMessage(), 0, $e);
+    }
   }
-
 
   public function list(): array {
-    $customers = $this->customerRepository->list();
-  
-    return array_map(function($customer) {
-      $addresses = $this->addressService->listByCustomerId($customer->getId());
-  
-      return new Customer(
-        $customer->getId(),
-        $customer->getName(),
-        $customer->getEmail(),
-        $customer->getPassword(),
-        $customer->getBirthday(),
-        $customer->getCpf(),
-        $customer->getRg(),
-        $customer->getPhone(),
-        $addresses
+    try {
+      return array_map(
+        fn($customer) => $this->mapCustomerWithAddresses($customer), 
+        $this->customerRepository->list()
       );
-    }, $customers);
+    } catch (Exception $e) {
+      throw new Exception("Error listing customers: " . $e->getMessage(), 0, $e);
+    }
   }
-  
 
-  public function exists($email): bool {
-    return $this->customerRepository->findByEmail($email) !== null;
+  public function exists(string $email): bool {
+    try {
+      return $this->customerRepository->findByEmail($email) !== null;
+    } catch (Exception $e) {
+      throw new Exception("Error checking customer existence: " . $e->getMessage(), 0, $e);
+    }
+  }
+
+  public function validateCredentials(string $email, string $password): ?bool {
+    try {
+      $customer = $this->customerRepository->findByEmail($email);
+
+      if (!$customer) 
+        return false;
+
+      return password_verify($password, $customer->getPassword());
+    } catch (Exception $e) {
+      throw new Exception("Error validating credentials: " . $e->getMessage(), 0, $e);
+    }
+  }
+
+  private function mapCustomerWithAddresses(Customer $customer): array {
+    try {
+      $addresses = array_map(
+        fn($address) => $this->addressService->mapAddressToArray($address), 
+        $this->addressService->listByCustomerId($customer->getId()) ?? []
+      );
+
+      return [
+        'id' => $customer->getId(),
+        'name' => $customer->getName(),
+        'email' => $customer->getEmail(),
+        'password' => $customer->getPassword(),
+        'birthday' => $customer->getBirthday(),
+        'cpf' => $customer->getCpf(),
+        'rg' => $customer->getRg(),
+        'phone' => $customer->getPhone(),
+        'addresses' => $addresses,
+      ];
+    } catch (Exception $e) {
+      throw new Exception("Error mapping customer with addresses: " . $e->getMessage(), 0, $e);
+    }
   }
 }
-

@@ -23,13 +23,15 @@ class AddressServiceUnitTest extends TestCase {
     $addresses = [
       [
         'street' => 'Rua Durval Clemente',
-        'number' => '1',
-        'zipcode' => '02040-000'
+        'number' => '1A',
+        'zipcode' => '02040-000',
+        'city' => 'São Paulo',
+        'state' => 'SP'
       ]
     ];
   
     $expectedAddressObjects = [
-      new Address(null, $customerId, 'Rua Durval Clemente', '1', '02040-000')
+      new Address(null, $customerId, 'Rua Durval Clemente', '1A', '02040-000', 'São Paulo', 'SP')
     ];
   
     $this->addressRepositoryMock->expects($this->once())
@@ -41,8 +43,10 @@ class AddressServiceUnitTest extends TestCase {
             return false;
   
           return $arg[0]->getStreet() === 'Rua Durval Clemente' &&
-                 $arg[0]->getNumber() === '1' &&
+                 $arg[0]->getNumber() === '1A' &&
                  $arg[0]->getZipcode() === '02040-000' &&
+                 $arg[0]->getCity() === 'São Paulo' &&
+                 $arg[0]->getState() === 'SP' &&
                  $arg[0]->getCustomerId() === 1;
         })
       );
@@ -52,7 +56,7 @@ class AddressServiceUnitTest extends TestCase {
   
   public function testUpdateManyAddresses() {
     $addresses = [
-      new Address(1, 1, 'Rua Durval Clemente', '2', '02040-000')
+      new Address(1, 1, 'Rua Durval Clemente', '2B', '02040-000', 'Rio de Janeiro', 'RJ')
     ];
 
     $this->addressRepositoryMock->expects($this->once())
@@ -63,7 +67,7 @@ class AddressServiceUnitTest extends TestCase {
   }
 
   public function testRemoveAddress() { 
-    $address = new Address(1, 1, 'Rua Durval Clemente', '1', '02040-000');
+    $address = new Address(1, 1, 'Rua Durval Clemente', '1', '02040-000', 'São Paulo', 'SP');
     $addressIds = [1];
   
     $this->addressRepositoryMock->expects($this->once())
@@ -83,12 +87,16 @@ class AddressServiceUnitTest extends TestCase {
       ->method('findByCustomerId')
       ->with(1)
       ->willReturn([
-        new Address(1, 1, 'Rua Durval Clemente', '1', '02040-000')
+        new Address(1, 1, 'Rua Durval Clemente', '1', '02040-000', 'São Paulo', 'SP')
       ]);
 
     $addresses = $this->addressService->listByCustomerId(1);
     
     $this->assertCount(1, $addresses);
     $this->assertEquals('Rua Durval Clemente', $addresses[0]->getStreet());
+    $this->assertEquals('1', $addresses[0]->getNumber());
+    $this->assertEquals('02040-000', $addresses[0]->getZipcode());
+    $this->assertEquals('São Paulo', $addresses[0]->getCity());
+    $this->assertEquals('SP', $addresses[0]->getState());
   }
 }

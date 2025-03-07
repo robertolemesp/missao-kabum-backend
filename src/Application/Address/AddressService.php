@@ -2,83 +2,97 @@
 namespace Application\Address;
 
 use Domain\Address\Address;
-use Domain\Address\AddressServiceInterface;
 use Domain\Address\AddressRepositoryInterface;
 
 class AddressService implements AddressServiceInterface {
-  private $addressRepository;
+  public function __construct(private AddressRepositoryInterface $addressRepository) {}
 
-  public function __construct(AddressRepositoryInterface $addressRepository) {
-    $this->addressRepository = $addressRepository;
-  }
-
-  public function createMany(int $customerId, array $addresses): void {
+  public function createMany(int $customerId, array $addresses): ?array {
     if (empty($addresses)) 
-      return;
+      return null;
 
-    $addressObjects = array_map(function($addressData) use ($customerId) {
-      if ($addressData instanceof Address)
-        return $addressData;
+    $addressObjects = $this->mapAddresses($customerId, $addresses);
 
-      if (!is_array($addressData)) 
-        throw new \InvalidArgumentException("Invalid address format.");
-          
-      return new Address(
-        null,
-        $customerId,
-        $addressData['street'],
-        $addressData['number'],
-        $addressData['zipcode']
-      );
-    }, $addresses);
-
-    $this->addressRepository->createMany($customerId, $addressObjects);
+    return $this->addressRepository->createMany($customerId, $addressObjects);
   }
 
-  public function listByCustomerId($customerId): array {
-    return $this->addressRepository->findByCustomerId($customerId);
+  public function listByCustomerId(int $customerId): array {
+    return $this->addressRepository->findByCustomerId($customerId) ?? [];
   }
 
   public function updateMany(array $addresses): void {
     if (empty($addresses)) 
       return;
-    
-    foreach ($addresses as $address) {
+
+    foreach ($addresses as $address) 
       if (!$address instanceof Address) 
-        throw new \InvalidArgumentException("All elements in the array must be instances of Address.");
-    }
+        throw new \InvalidArgumentException("All elements must be Address instances.");
 
     $this->addressRepository->updateMany($addresses);
   }
 
-
-  public function removeAllByCustomerId($customerId): void {
+  public function removeAllByCustomerId(int $customerId): void {
     $addresses = $this->addressRepository->findByCustomerId($customerId);
-    
-    foreach ($addresses as $address) 
-      $this->addressRepository->remove($address->getId());
+
+    $this->addressRepository->removeMany(
+      array_map(
+        fn(Address $address) => $address->getId(), 
+        $addresses
+      )
+    );
   }
 
-  public function remove($id): void {
-    $existingAddress = $this->addressRepository->findById($id);
-
-    if (!$existingAddress) 
+  public function remove(int $id): void {
+    if (!$this->addressRepository->findById($id)) 
       throw new \InvalidArgumentException("Address not found.");
-  
+
     $this->addressRepository->remove($id);
   }
 
   public function removeMany(array $addressIds): void {
     if (empty($addressIds)) 
       return;
-  
-    $addresses = array_filter(array_map(
-      fn($id) => $this->addressRepository->findById($id), $addressIds)
+
+    $existingAddresses = array_filter(
+      array_map(fn($id) => $this->addressRepository->findById($id), $addressIds)
     );
-  
-    if (count($addresses) !== count($addressIds)) 
+
+    if (count($existingAddresses) !== count($addressIds)) 
       throw new \InvalidArgumentException("One or more addresses not found.");
-  
+    
     $this->addressRepository->removeMany($addressIds);
+  }
+
+  public function mapToArray(Address $address): array {
+    return $this->mapAddressToArray($address);
+  }
+
+  public function mapAddressToArray(Address $address): array {
+    if (!$address instanceof Address) 
+      throw new \InvalidArgumentException("Expected Address instance in mapAddressToArray()");
+
+    return [
+      'id' => $address->getId(),
+      'customerId' => $address->getCustomerId(),
+      'street' => $address->getStreet(),
+      'number' => $address->getNumber(),
+      'city' => $address->getCity(),
+      'zipcode' => $address->getZipcode(),
+      'state' => $address->getState()
+    ];
+  }
+
+  public function mapAddresses(int $customerId, array $addresses): array {
+    return array_map(fn($addr) => $addr instanceof Address
+      ? $addr
+      : new Address(
+          $addr['id'] ?? null,
+          $customerId,
+          $addr['street'],
+          $addr['number'],
+          $addr['zipcode'],
+          $addr['city'],
+          $addr['state']
+      ), $addresses);
   }
 }

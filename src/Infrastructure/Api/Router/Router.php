@@ -1,51 +1,85 @@
 <?php
 namespace Infrastructure\Api\Router;
 
-use Infrastructure\Api\Router\Customer\Routes as CustomerRoutes;
-use Application\Customer\CustomerService;
-use Application\Address\AddressService;
-
-use Infrastructure\Api\Controller\CustomerController;
+use Infrastructure\Api\Router\Customer\CustomerRoutes;
+use Infrastructure\Api\Controller\Customer\CustomerController;
 
 class Router {
-  private $customerController;
+  private CustomerController $customerController;
+  private string $jwtSecret;
 
-  public function __construct(CustomerService $customerService, AddressService $addressService) {
-    $this->customerController = new CustomerController($customerService, $addressService);
+  public function __construct(CustomerController $customerController) {
+    $this->customerController = $customerController;
+
+    $this->jwtSecret = $_ENV['NEXTAUTH_SECRET'] ?? '';
+
+    if (empty($this->jwtSecret)) 
+      throw new \Exception('NEXTAUTH_SECRET is not set in environment variables.');
   }
 
-  public function route($requestUri, $requestMethod) {
-    $router = [
-      'POST' => [],
-      'GET' => [],
-      'PUT' => [],
-      'DELETE' => []
-    ];
+  private function setDefaultHeaders(): void {
+    header('Access-Control-Allow-Origin: http://localhost:3000');
+    header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, ALL, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type, Authorization');
+    header('Access-Control-Allow-Credentials: true');
+    header('Content-Type: application/json');
 
-    $router['GET']['/'] = function () {
-      header('Content-Type: application/json');
-      echo json_encode(['message' => 'Application is Running']);
-    };
-    
-    CustomerRoutes::register($router, $this->customerController);
-
-    if (!isset($router[$requestMethod])) {
-      header('HTTP/1.1 405 Method Not Allowed');
-      echo json_encode(['message' => 'Method Not Allowed']);
-      
-      return;
+    if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+      http_response_code(200);
+      exit();
     }
+  }
 
-    foreach ($router[$requestMethod] as $pattern => $handler) {
+  public function route(string $requestUri, string $requestMethod): void {
+    $this->setDefaultHeaders();
+
+    try {
+      $router = [
+        'POST' => [],
+        'GET' => [],
+        'PUT' => [],
+        'ALL' => [],
+        'DELETE' => [],
+      ];
+
+      $router['GET']['/'] = fn() => $this->jsonResponse(['message' => 'Application is Running'], 200);
+
+      CustomerRoutes::register($router, $this->customerController, $this->jwtSecret);
+
+      if (!isset($router[$requestMethod])) {
+        $this->jsonResponse(['errors' => ['Method Not Allowed']], 405);
+        return;
+      }
+
+      if ($this->matchRoute($router[$requestMethod], $requestUri)) 
+        return;
+      
+      if ($this->matchRoute($router['ALL'], $requestUri)) 
+        return;
+      
+      $this->jsonResponse(['errors' => ['Route Not Found']], 404);
+    } catch (\Throwable $e) {
+        $this->jsonResponse(['errors' => ['Internal Server Error', $e->getMessage()]], 500);
+    }
+  }
+
+  private function matchRoute(array $routes, string $requestUri): bool {
+    foreach ($routes as $pattern => $handler) 
       if (preg_match('#^' . $pattern . '$#', $requestUri, $matches)) {
         array_shift($matches);
         call_user_func_array($handler, $matches);
-
-        return;
+        return true;
       }
-    }
 
-    header('HTTP/1.1 404 Not Found');
-    echo json_encode(['message' => 'Route Not Found']);
+    return false;
+  }
+
+
+  private function jsonResponse(array $data, int $statusCode): void {
+    header('Content-Type: application/json');
+    http_response_code($statusCode);
+    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_NUMERIC_CHECK);
+    exit();
   }
 }
+

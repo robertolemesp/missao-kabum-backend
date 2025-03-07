@@ -2,7 +2,6 @@
 namespace Application\Tests;
 
 use PHPUnit\Framework\TestCase;
-use PHPUnit\Framework\MockObject\MockObject;
 
 use Domain\Customer\Customer;
 use Application\Customer\CustomerService;
@@ -29,22 +28,35 @@ class CustomerServiceUnitTest extends TestCase {
       'password' => 'securepassword',
       'birthday' => '1995-01-11',
       'cpf' => '123.456.789-01',
-      'rg' => '1234567890',
+      'rg' => '12.345.678-9',
       'phone' => '1234567890',
       'addresses' => []
     ];
-  
+
     $this->customerRepositoryMock->expects($this->once())
       ->method('create')
-      ->with($this->isInstanceOf(Customer::class))
+      ->with($this->callback(function (Customer $customer) {
+        return $customer->getName() === 'Roberto Lemes' &&
+               $customer->getEmail() === 'roberto@example.com' &&
+               $customer->getCpf() === '123.456.789-01' &&
+               $customer->getBirthday() === '1995-01-11';
+      }))
       ->willReturn(1);
-  
+
     $this->addressServiceMock->expects($this->never())
       ->method('createMany');
-  
-    $this->customerService->create($customerData);
+
+    $createdCustomer = $this->customerService->create($customerData);
+
+    $this->assertIsArray($createdCustomer);
+    $this->assertEquals(1, $createdCustomer['id']);
+    $this->assertEquals('Roberto Lemes', $createdCustomer['name']);
+    $this->assertEquals('roberto@example.com', $createdCustomer['email']);
+    $this->assertEquals('1995-01-11', $createdCustomer['birthday']);
+    $this->assertEquals('123.456.789-01', $createdCustomer['cpf']);
+    $this->assertEmpty($createdCustomer['addresses']); 
   }
-  
+
 
   public function testUpdateCustomer() {
     $customerData = [
@@ -54,30 +66,32 @@ class CustomerServiceUnitTest extends TestCase {
       'password' => 'securepassword',
       'birthday' => '1980-05-10',
       'cpf' => '123.456.789-01',
-      'rg' => '1234567890',
+      'rg' => '12.345.678-9',
       'phone' => '1234567890',
       'addresses' => []
     ];
 
-    $customer = new Customer(
-      $customerData['id'], 
-      $customerData['name'], 
-      $customerData['email'], 
-      $customerData['password'], 
-      new \DateTime($customerData['birthday']), 
-      $customerData['cpf'], 
-      $customerData['rg'], 
+    $existingCustomer = new Customer(
+      $customerData['id'],
+      $customerData['name'],
+      $customerData['email'],
+      $customerData['password'],
+      new \DateTime($customerData['birthday']),
+      $customerData['cpf'],
+      $customerData['rg'],
       $customerData['phone']
     );
 
     $this->customerRepositoryMock->expects($this->once())
       ->method('findById')
       ->with(1)
-      ->willReturn($customer);
+      ->willReturn($existingCustomer);
 
     $this->customerRepositoryMock->expects($this->once())
       ->method('update')
-      ->with($this->isInstanceOf(Customer::class));
+      ->with($this->callback(function (Customer $customer) {
+        return $customer->getBirthday() === '1980-05-10';
+      }));
 
     $this->addressServiceMock->expects($this->never())
       ->method('updateMany');
@@ -107,86 +121,85 @@ class CustomerServiceUnitTest extends TestCase {
       'email' => 'roberto@example.com',
       'password' => 'securepassword',
       'birthday' => '1995-01-11',
-      'cpf' => '123.456.789-01',
-      'rg' => '1234567890',
+      'cpf' => '123.456.789-11',
+      'rg' => '12.345.678-9',
       'phone' => '1234567890',
       'addresses' => [
         [
           'street' => 'Rua Durval Clemente',
           'number' => '1',
-          'zipcode' => '00000-000'
+          'zipcode' => '00000-000',
+          'city' => 'São Paulo',
+          'state' => 'SP'
         ]
       ]
     ];
-  
+
     $this->customerRepositoryMock->expects($this->once())
       ->method('create')
-      ->with($this->isInstanceOf(Customer::class))
+      ->with($this->callback(function (Customer $customer) {
+        return $customer->getBirthday() === '1995-01-11';
+      }))
       ->willReturn(1);
-  
+
     $expectedAddresses = [
-      new Address(null, 1, 'Rua Durval Clemente', '1', '00000-000')
+      new Address(null, 1, 'Rua Durval Clemente', '1', '00000-000', 'São Paulo', 'SP')
     ];
-  
+
     $this->addressServiceMock->expects($this->once())
       ->method('createMany')
       ->with(
         $this->equalTo(1),
         $this->callback(function ($addresses) use ($expectedAddresses) {
           return is_array($addresses) && count($addresses) === 1 && $addresses[0] instanceof Address &&
-                 $addresses[0]->getStreet() === 'Rua Durval Clemente' &&
-                 $addresses[0]->getNumber() === '1' &&
-                 $addresses[0]->getZipcode() === '00000-000' &&
-                 $addresses[0]->getCustomerId() === 1;
+            $addresses[0]->getStreet() === 'Rua Durval Clemente' &&
+            $addresses[0]->getNumber() === '1' &&
+            $addresses[0]->getZipcode() === '00000-000' &&
+            $addresses[0]->getState() === 'SP' &&
+            $addresses[0]->getCustomerId() === 1;
         })
       );
-  
+
     $this->customerService->create($customerData);
   }
-  
 
-  public function update(array $updatingCustomer): void {
-    $foundCustomer = $this->customerRepository->findById($updatingCustomer['id']);
-  
-    if (!$foundCustomer) 
-      throw new \InvalidArgumentException("Customer not found.");
-  
-    $customer = new Customer(
-      $foundCustomer->getId(),
-      $updatingCustomer['name'],
-      $foundCustomer->getEmail(),
-      $updatingCustomer['password'],
-      new \DateTime($updatingCustomer['birthday']),
-      $updatingCustomer['cpf'],
-      $updatingCustomer['rg'],
-      $updatingCustomer['phone']
-    );
-  
-    $this->customerRepository->update($customer);
-  
-    if (empty($updatingCustomer['addresses'])) 
-      return;
-  
-    $addresses = array_map(function ($addressData) use ($customer) {
-      if ($addressData instanceof Address) {
-        return new Address(
-          $addressData->getId(),
-          $customer->getId(),
-          $addressData->getStreet(),
-          $addressData->getNumber(),
-          $addressData->getZipcode()
-        );
-      }
-  
-      return new Address(
-        $addressData['id'] ?? null, 
-        $customer->getId(),
-        $addressData['street'],
-        $addressData['number'],
-        $addressData['zipcode']
-      );
-    }, $updatingCustomer['addresses']);
-  
-    $this->addressService->updateMany($addresses);
-  }  
+  public function testValidateCredentials() {
+    $email = 'roberto@test.com';
+    $plainPassword = 'SecurePass123!';
+    $hashedPassword = password_hash($plainPassword, PASSWORD_BCRYPT);
+
+    $customerMock = $this->createMock(Customer::class);
+
+    $customerMock->method('getEmail')->willReturn($email);
+    $customerMock->method('getPassword')->willReturn($hashedPassword);
+
+    $this->customerRepositoryMock->expects($this->once())
+      ->method('findByEmail')
+      ->with($email)
+      ->willReturn($customerMock);
+
+    $isValid = $this->customerService->validateCredentials($email, $plainPassword);
+
+    $this->assertTrue($isValid, 'Valid credentials should return true');
+  }
+
+  public function testValidateCredentialsWithInvalidPassword() {
+    $email = 'roberto@test.com';
+    $plainPassword = 'WrongPassword!';
+    $hashedPassword = password_hash('SecurePass123!', PASSWORD_BCRYPT);
+
+    $customerMock = $this->createMock(Customer::class);
+
+    $customerMock->method('getEmail')->willReturn($email);
+    $customerMock->method('getPassword')->willReturn($hashedPassword);
+
+    $this->customerRepositoryMock->expects($this->once())
+      ->method('findByEmail')
+      ->with($email)
+      ->willReturn($customerMock);
+
+    $isValid = $this->customerService->validateCredentials($email, $plainPassword);
+
+    $this->assertFalse($isValid, 'Invalid password should return false');
+  }
 }

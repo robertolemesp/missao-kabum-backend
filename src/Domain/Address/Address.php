@@ -7,13 +7,17 @@ class Address {
   private $street;
   private $number;
   private $zipcode;
+  private $city;
+  private $state;
 
-  public function __construct($id, $customerId, $street, $number, $zipcode) {
+  public function __construct($id, $customerId, $street, $number, $zipcode, $city, $state) {
     $this->id = $id;
     $this->customerId = $customerId;
     $this->street = $street;
     $this->number = $number;
     $this->zipcode = $zipcode;
+    $this->city = $city;
+    $this->state = $state;
 
     $this->validate();
   }
@@ -23,6 +27,8 @@ class Address {
   public function getStreet() { return $this->street; }
   public function getNumber() { return $this->number; }
   public function getZipcode() { return $this->zipcode; }
+  public function getCity() { return $this->city; }
+  public function getState() { return $this->state; }
 
   private function validate() {
     $errors = [];
@@ -40,6 +46,12 @@ class Address {
 
     if (empty($this->zipcode) || !preg_match('/^[0-9]{5}\-[0-9]{3}$/', $this->zipcode))
       $errors[] = 'Invalid postal code format. Expected format: #####-###';
+
+    if (empty($this->city))
+      $errors[] = 'City is required.';
+    
+    if (empty($this->state))
+      $errors[] = 'State is required.';
     
     if (!empty($errors)) 
       throw new \InvalidArgumentException(implode(' ', $errors));

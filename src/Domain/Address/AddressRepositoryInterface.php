@@ -2,8 +2,10 @@
 namespace Domain\Address;
 
 interface AddressRepositoryInterface {
-  public function create(Address $address): void;
-  public function createMany(int $customerId, array $addresses): void;
+  /**
+   * @return Address[]
+   */
+  public function createMany(int $customerId, array $addresses): ?array;
   public function findById(int $id): ?Address;
   public function findByCustomerId(int $customerId): array;
   public function updateMany(array $address): void;

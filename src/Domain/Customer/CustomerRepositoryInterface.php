@@ -10,5 +10,5 @@ interface CustomerRepositoryInterface {
   /**
    * @return Customer[]
    */
-  public function list(): array;
+  public function list(): ?array;
 }
